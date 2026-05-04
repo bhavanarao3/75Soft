@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>75 Soft Challenge</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#F7F7F3;-webkit-tap-highlight-color:transparent;font-family:Georgia,serif}
+  button{font-family:inherit;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+import{createElement,useState,useRef,useCallback,Fragment}from'https://esm.sh/react@18';
+import{createRoot}from'https://esm.sh/react-dom@18/client';
+import htm from'https://esm.sh/htm@3';
+const html=htm.bind(createElement);
+
+const START=new Date("2026-05-04T00:00:00");
+const TOTAL=75;
+const toStr=d=>{const y=d.getFullYear(),mo=String(d.getMonth()+1).padStart(2,"0"),dy=String(d.getDate()).padStart(2,"0");return`${y}-${mo}-${dy}`;};
+const todayStr=()=>toStr(new Date());
+const dayOf=ds=>Math.floor((new Date(ds+"T00:00:00")-START)/86400000)+1;
+const dateOfDay=n=>toStr(new Date(START.getTime()+(n-1)*86400000));
+const lsLoad=()=>{try{const v=localStorage.getItem("soft75_v1");return v?JSON.parse(v):{}}catch(_){return{}}};
+const lsSave=d=>{try{localStorage.setItem("soft75_v1",JSON.stringify(d))}catch(_){}};
+
+const LEARN=[
+  {t:"C++: Smart Pointers & RAII",b:"Write a RAII wrapper using unique_ptr and shared_ptr. No raw new/delete — table stakes at robotics companies."},
+  {t:"ROS2: TF2 & Coordinate Frames",b:"Implement a tf2 broadcaster and listener. Static vs dynamic transforms — mishandled frames cause most perception bugs."},
+  {t:"Perception: Point Cloud Pipeline",b:"Review a full PCL pipeline: voxel downsampling → normal estimation → segmentation. Sketch what each step does to the data."},
+  {t:"C++: Concurrency for Robotics",b:"Study std::thread, std::mutex, std::atomic. Write a thread-safe sensor buffer — essential for multi-sensor fusion."},
+  {t:"Control Theory: PID Deep Dive",b:"Implement a PID controller from scratch in C++. Tune a simulated 1D system. Understand integral windup and derivative kick."},
+  {t:"ROS2: Nav2 Architecture",b:"Study Nav2's planner/controller server split. Understand costmap2d layers and when to write a custom plugin."},
+  {t:"Perception: Camera Calibration",b:"Revisit pinhole model, distortion params, stereo calibration math. Derive the projection matrix from first principles."},
+  {t:"C++: Templates & Type Traits",b:"Write a generic circular buffer using templates + static_assert. Study type_traits — used everywhere in robotics middleware."},
+  {t:"State Estimation: EKF/UKF",b:"Study the Extended Kalman Filter derivation. Implement a 2D pose EKF on paper, then in Python. Core for localization interviews."},
+  {t:"ROS2: Lifecycle Nodes",b:"Refactor a node to use managed lifecycle. Understand configure → activate → deactivate — critical for production robot software."},
+  {t:"Perception: Semantic Segmentation",b:"Compare SegNet vs DeepLab vs Mask R-CNN architecturally. Tradeoffs for real-time on-robot inference?"},
+  {t:"C++: STL & Algorithm Complexity",b:"Solve 3 problems using only STL — priority_queue, unordered_map, lower_bound. Know the complexity of each container cold."},
+  {t:"Motion Planning: Sampling Methods",b:"Study RRT vs RRT* vs PRM. Implement RRT in 2D from scratch. Understand completeness and optimality of each."},
+  {t:"ROS2: Behavior Trees (BT.CPP v4)",b:"Implement a 3-node BT: condition → fallback → action. Understand blackboard comms and Sequence vs Fallback."},
+  {t:"Perception: Depth Estimation",b:"Study structured light vs stereo vs ToF vs monocular depth. What can each do? How would you fuse two of them?"},
+  {t:"C++: Move Semantics & Rvalue Refs",b:"Write a class with move constructor and move assignment. Profile copy vs move on a large vector. Interviewers love this."},
+  {t:"Control: Model Predictive Control",b:"Study MPC intuition — rolling horizon, constraint satisfaction. When would you replace a PID with MPC on a mobile robot?"},
+  {t:"ROS2: Custom Message & Service Design",b:"Design a clean ROS2 interface for a perception pipeline: topic vs service vs action. Write the .msg/.srv/.action files."},
+  {t:"Perception: Object Detection Review",b:"Compare YOLO, SSD, and DETR architecturally. Latency/accuracy tradeoffs for Jetson or embedded deployment."},
+  {t:"System Design: Robotics Architecture",b:"Sketch the full software stack for an AMR — sensing, localization, mapping, planning, control. Be ready to whiteboard this."},
+];
+
+const HABITS=[
+  {id:"wake",    label:"Wake up by 7:30 AM",         icon:"🌅",cat:"Morning",     note:""},
+  {id:"noscreen",label:"No screen before bathing",   icon:"🚿",cat:"Morning",     note:""},
+  {id:"lymph",   label:"Lymphatic drainage",          icon:"💆",cat:"Morning",     note:"10–15 min"},
+  {id:"vitd",    label:"Vitamin D",                  icon:"☀️",cat:"Supplements", note:"daily"},
+  {id:"b12",     label:"B12 supplement",             icon:"💊",cat:"Supplements", note:"alternate days",alt:true},
+  {id:"cran",    label:"Cranberry with dinner",       icon:"🍒",cat:"Supplements", note:"daily"},
+  {id:"steps",   label:"5,000+ steps",               icon:"👟",cat:"Body",        note:""},
+  {id:"water",   label:"1.5–2L water",               icon:"💧",cat:"Body",        note:""},
+  {id:"protein", label:"50–60g protein",             icon:"🥩",cat:"Body",        note:""},
+  {id:"nosugar", label:"Avoided sugar",              icon:"🚫",cat:"Body",        note:""},
+  {id:"workout", label:"Workout session",            icon:"🏋️",cat:"Fitness",     note:"4×/week goal"},
+  {id:"nophone", label:"No phone after dinner",      icon:"📵",cat:"Evening",     note:""},
+  {id:"kitchen", label:"Kitchen clean",              icon:"🍽️",cat:"Evening",     note:""},
+  {id:"learn",   label:"30 min meaningful learning", icon:"📚",cat:"Growth",      note:"see today's prompt"},
+  {id:"journal", label:"5 min reflection / journal", icon:"✍️",cat:"Growth",      note:"what went well today?"},
+];
+
+const habitsForDay=n=>HABITS.filter(h=>h.alt?n%2===1:true);
+const G={dk:"#0D5C45",md:"#1D9E75",lt:"#E1F5EE",am:"#EF9F27",ab:"#FFF8E6",ad:"#854F0B",br:"#E8E8E3",bg:"#F7F7F3",cd:"#FFFFFF",tx:"#1A1A1A",mu:"#888888",rd:"#E24B4A"};
+const CC={Morning:"#5DCAA5",Supplements:"#EF9F27",Body:"#378ADD",Fitness:"#D85A30",Evening:"#7F77DD",Growth:"#D4537E"};
+const sf="system-ui,sans-serif";
+
+function App(){
+  const[raw,setRaw]=useState(()=>lsLoad());
+  const[tab,setTab]=useState("today");
+  const[cm,setCm]=useState(0);
+  const sr=useRef(null);
+  const today=todayStr(),cd=dayOf(today);
+  const persist=useCallback(d=>{if(sr.current)clearTimeout(sr.current);sr.current=setTimeout(()=>lsSave(d),400);},[]);
+  const toggle=(ds,id)=>setRaw(prev=>{const next={...prev,[ds]:{...(prev[ds]||{}),[id]:!(prev[ds]?.[id])}};persist(next);return next;});
+
+  const pre=cd<1,post=cd>TOTAL,acd=pre?1:Math.min(cd,TOTAL);
+  const ths=habitsForDay(acd),td=raw[today]||{};
+  const chk=ths.filter(h=>td[h.id]).length,pct=Math.round(chk/ths.length*100);
+
+  let streak=0;
+  for(let i=cd-1;i>=1;i--){const ds=dateOfDay(i),hl=habitsForDay(i),dd=raw[ds]||{};if(hl.every(h=>dd[h.id]))streak++;else break;}
+
+  const now=new Date(),dow=now.getDay();
+  const ws=new Date(now);ws.setDate(now.getDate()-dow);ws.setHours(0,0,0,0);
+  let ww=0;for(let i=0;i<7;i++){const d=new Date(ws.getTime()+i*86400000);if((raw[toStr(d)]||{}).workout)ww++;}
+
+  let pf=0,at=0;
+  for(let i=1;i<=Math.min(cd-1,TOTAL);i++){const ds=dateOfDay(i),hl=habitsForDay(i),dd=raw[ds]||{};at++;if(hl.every(h=>dd[h.id]))pf++;}
+
+  const learn=LEARN[(acd-1)%LEARN.length];
+  const cats=[...new Set(ths.map(h=>h.cat))];
+  const dl=TOTAL-Math.max(cd-1,0);
+
+  return html`<div style=${{fontFamily:"Georgia,serif",background:G.bg,minHeight:"100vh",maxWidth:480,margin:"0 auto"}}>
+
+    <!-- HEADER -->
+    <div style=${{background:`linear-gradient(135deg,${G.dk} 0%,#1A7A5E 100%)`,color:"white",padding:"22px 20px 18px",position:"relative",overflow:"hidden"}}>
+      <div style=${{position:"absolute",top:-30,right:-30,width:120,height:120,borderRadius:"50%",background:"rgba(255,255,255,0.06)"}}/>
+      <div style=${{position:"absolute",bottom:-20,right:40,width:80,height:80,borderRadius:"50%",background:"rgba(255,255,255,0.04)"}}/>
+      <div style=${{fontSize:10,textTransform:"uppercase",letterSpacing:"0.14em",opacity:0.7,marginBottom:6,fontFamily:sf}}>75 Soft Challenge · May 4 2026</div>
+      <div style=${{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div>
+          <div style=${{fontSize:42,fontWeight:400,lineHeight:1}}>
+            ${pre?"Day 0":`Day ${Math.min(cd,75)}`}<span style=${{fontSize:16,opacity:0.6,marginLeft:4}}>/ 75</span>
+          </div>
+          <div style=${{fontSize:12,opacity:0.65,marginTop:4,fontFamily:sf}}>
+            ${pre?"🌱 Starts tomorrow — you're ready!":post?"🏆 Challenge complete!":`${dl} days remaining · ends Jul 17`}
+          </div>
+        </div>
+        <div style=${{textAlign:"right"}}>
+          <div style=${{fontSize:28,lineHeight:1}}>${streak}<span style=${{fontSize:18}}>🔥</span></div>
+          <div style=${{fontSize:11,opacity:0.65,fontFamily:sf}}>day streak</div>
+        </div>
+      </div>
+      <div style=${{marginTop:16,background:"rgba(255,255,255,0.18)",borderRadius:3,height:4}}>
+        <div style=${{width:`${(Math.max(cd-1,0)/TOTAL)*100}%`,background:"white",height:"100%",borderRadius:3}}/>
+      </div>
+      <div style=${{display:"flex",justifyContent:"space-between",fontSize:10,opacity:0.6,marginTop:5,fontFamily:sf}}>
+        <span>May 4</span><span>${pf}/${at} perfect days</span><span>Jul 17</span>
+      </div>
+    </div>
+
+    <!-- STAT PILLS -->
+    <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,padding:"14px 16px 0"}}>
+      ${[
+        {label:"Today",val:`${pct}%`,sub:`${chk}/${ths.length}`,ok:pct>=80},
+        {label:"Workouts",val:`${ww}/4`,sub:"this week",ok:ww>=4},
+        {label:"Completion",val:at>0?`${Math.round(pf/at*100)}%`:"—",sub:"perfect days",ok:true},
+      ].map(s=>html`<div key=${s.label} style=${{background:G.cd,border:`1px solid ${G.br}`,borderRadius:12,padding:"10px 10px 8px",textAlign:"center"}}>
+        <div style=${{fontSize:20,fontWeight:700,color:s.ok?G.dk:G.rd,fontFamily:sf}}>${s.val}</div>
+        <div style=${{fontSize:10,color:G.mu,marginTop:1,fontFamily:sf}}>${s.label}</div>
+        <div style=${{fontSize:9,color:G.mu,marginTop:1,fontFamily:sf}}>${s.sub}</div>
+      </div>`)}
+    </div>
+
+    <!-- TABS -->
+    <div style=${{display:"flex",gap:6,padding:"14px 16px 0",fontFamily:sf}}>
+      ${["today","calendar","stats"].map(t=>html`
+        <button key=${t} onClick=${()=>setTab(t)} style=${{
+          padding:"7px 16px",borderRadius:20,border:`1px solid ${tab===t?G.dk:G.br}`,
+          fontSize:12,fontWeight:600,background:tab===t?G.dk:"transparent",
+          color:tab===t?"white":G.mu,textTransform:"uppercase",letterSpacing:"0.02em",
+        }}>${t}</button>
+      `)}
+    </div>
+
+    <!-- CONTENT -->
+    <div style=${{padding:"14px 16px 60px"}}>
+
+      ${tab==="today"&&html`<${Fragment}>
+        ${pre&&html`<div style=${{background:G.lt,borderRadius:10,padding:"12px 16px",marginBottom:12,textAlign:"center",color:G.dk,fontFamily:sf,fontSize:13,fontWeight:600}}>🌱 Set up complete — check in starting May 4th!</div>`}
+
+        <div style=${{background:G.cd,border:`1px solid ${G.br}`,borderRadius:12,padding:"10px 14px",marginBottom:12,fontFamily:sf}}>
+          <div style=${{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <span style=${{fontSize:11,fontWeight:700,color:G.mu,textTransform:"uppercase",letterSpacing:"0.07em"}}>Workouts this week</span>
+            <span style=${{fontSize:12,fontWeight:700,color:ww>=4?G.dk:G.am}}>${ww}/4</span>
+          </div>
+          <div style=${{display:"flex",gap:6}}>
+            ${["S","M","T","W","T","F","S"].map((d,i)=>html`
+              <div key=${i} style=${{flex:1,textAlign:"center"}}>
+                <div style=${{height:6,borderRadius:3,background:i<ww?G.md:G.br,marginBottom:3}}/>
+                <span style=${{fontSize:9,color:G.mu}}>${d}</span>
+              </div>
+            `)}
+          </div>
+        </div>
+
+        <div style=${{background:G.ab,borderLeft:`3px solid ${G.am}`,borderRadius:"0 10px 10px 0",padding:"10px 14px",marginBottom:14,fontFamily:sf}}>
+          <div style=${{fontSize:9,color:G.ad,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>Today's 30 min — meaningful growth</div>
+          <div style=${{fontSize:13,fontWeight:700,color:"#633806",marginTop:3}}>${learn.t}</div>
+          <div style=${{fontSize:11,color:G.ad,marginTop:3,lineHeight:1.5}}>${learn.b}</div>
+        </div>
+
+        ${cats.map(cat=>html`
+          <div key=${cat} style=${{marginBottom:12}}>
+            <div style=${{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+              <div style=${{width:8,height:8,borderRadius:"50%",background:CC[cat]||G.md}}/>
+              <span style=${{fontSize:9,fontWeight:700,color:G.mu,textTransform:"uppercase",letterSpacing:"0.09em",fontFamily:sf}}>${cat}</span>
+            </div>
+            <div style=${{background:G.cd,borderRadius:12,border:`1px solid ${G.br}`,overflow:"hidden"}}>
+              ${ths.filter(h=>h.cat===cat).map((h,i,arr)=>{
+                const done=!!(td[h.id]);
+                return html`
+                  <div key=${h.id} onClick=${()=>toggle(today,h.id)} style=${{
+                    display:"flex",alignItems:"center",gap:12,padding:"11px 14px",
+                    borderBottom:i<arr.length-1?`1px solid ${G.br}`:"none",
+                    cursor:"pointer",background:done?"#F9FDF9":G.cd,
+                  }}>
+                    <div style=${{width:22,height:22,borderRadius:"50%",flexShrink:0,
+                      background:done?G.dk:"transparent",border:`2px solid ${done?G.dk:"#CCC"}`,
+                      display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}>
+                      ${done&&html`<span style=${{color:"white",fontSize:11,fontWeight:700}}>✓</span>`}
+                    </div>
+                    <div style=${{flex:1,minWidth:0}}>
+                      <div style=${{fontSize:13,color:done?G.md:G.tx,textDecoration:done?"line-through":"none",fontFamily:sf,fontWeight:done?400:500}}>
+                        ${h.icon} ${h.label}
+                      </div>
+                      ${h.note&&html`<div style=${{fontSize:10,color:G.mu,marginTop:1,fontFamily:sf}}>${h.note}</div>`}
+                    </div>
+                  </div>
+                `;
+              })}
+            </div>
+          </div>
+        `)}
+      <//>`}
+
+      ${tab==="calendar"&&(()=>{
+        const all=[];for(let i=1;i<=TOTAL;i++)all.push(i);
+        const cks=[[],[],[]];all.forEach((d,i)=>cks[Math.floor(i/25)].push(d));
+        const lbs=["May 4–28","May 29–Jun 22","Jun 23–Jul 17"];
+        return html`<div style=${{fontFamily:sf}}>
+          <div style=${{display:"flex",gap:6,marginBottom:12}}>
+            ${lbs.map((l,i)=>html`<button key=${i} onClick=${()=>setCm(i)} style=${{
+              flex:1,padding:"6px 4px",borderRadius:8,border:`1px solid ${cm===i?G.dk:G.br}`,
+              background:cm===i?G.dk:"transparent",color:cm===i?"white":G.mu,fontSize:10,fontWeight:600,
+            }}>${l.split("–")[0].trim()}</button>`)}
+          </div>
+          <div style=${{fontSize:10,color:G.mu,marginBottom:8}}>${lbs[cm]}</div>
+          <div style=${{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+            ${cks[cm].map(n=>{
+              const ds=dateOfDay(n),hl=habitsForDay(n),dd=raw[ds]||{};
+              const isPast=n<cd,isToday=n===cd,isFuture=n>cd;
+              const dn=hl.filter(h=>dd[h.id]).length,tot=hl.length,p=tot>0?dn/tot:0;
+              let bg=G.bg,col="#CCC",bdr=`1px solid ${G.br}`;
+              if(isToday){bg=G.dk;col="white";bdr=`2px solid ${G.dk}`;}
+              else if(isPast){
+                if(p===1){bg=G.md;col="white";}
+                else if(p>=0.5){bg="#9FE1CB";col=G.dk;}
+                else if(p>0){bg="#FFF8E6";col=G.ad;bdr=`1px solid ${G.am}`;}
+                else{bg="#FCEBEB";col="#A32D2D";bdr="1px solid #F09595";}
+              }
+              return html`<div key=${n} style=${{background:bg,border:bdr,borderRadius:8,padding:"8px 4px",textAlign:"center"}}>
+                <div style=${{fontSize:14,fontWeight:600,color:col}}>${n}</div>
+                ${!isFuture&&html`<div style=${{fontSize:9,color:isToday?"rgba(255,255,255,0.8)":col,marginTop:2}}>${dn}/${tot}</div>`}
+              </div>`;
+            })}
+          </div>
+          <div style=${{display:"flex",gap:10,marginTop:14,flexWrap:"wrap"}}>
+            ${[[G.md,"white","✓ Perfect"],["#9FE1CB",G.dk,"50%+ done"],["#FFF8E6",G.ad,"Partial"],["#FCEBEB","#A32D2D","Missed"],[G.bg,"#CCC","Upcoming"]].map(([bg,c,l])=>html`
+              <div key=${l} style=${{display:"flex",alignItems:"center",gap:4}}>
+                <div style=${{width:10,height:10,borderRadius:3,background:bg,border:`1px solid ${c}`}}/>
+                <span style=${{fontSize:10,color:G.mu}}>${l}</span>
+              </div>
+            `)}
+          </div>
+        </div>`;
+      })()}
+
+      ${tab==="stats"&&(()=>{
+        const hs=HABITS.map(h=>{
+          let dn=0,tot=0;
+          for(let i=1;i<=Math.min(cd-1,TOTAL);i++){
+            const hl=habitsForDay(i);
+            if(!hl.find(x=>x.id===h.id))continue;
+            tot++;if((raw[dateOfDay(i)]||{})[h.id])dn++;
+          }
+          return{...h,dn,tot,rate:tot>0?Math.round(dn/tot*100):0};
+        }).filter(h=>h.tot>0).sort((a,b)=>b.rate-a.rate);
+
+        return html`<div style=${{fontFamily:sf}}>
+          <div style=${{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+            ${[
+              {label:"Best streak",val:`${streak} 🔥`,sub:"consecutive days"},
+              {label:"Perfect days",val:`${pf}`,sub:`of ${at} tracked`},
+              {label:"This week",val:`${ww}/4`,sub:"workout sessions"},
+              {label:"Progress",val:at>0?`${Math.round(pf/at*100)}%`:"—",sub:"days completed fully"},
+            ].map(s=>html`<div key=${s.label} style=${{background:G.cd,border:`1px solid ${G.br}`,borderRadius:12,padding:"12px 14px"}}>
+              <div style=${{fontSize:22,fontWeight:700,color:G.dk}}>${s.val}</div>
+              <div style=${{fontSize:11,color:G.mu,marginTop:2,fontWeight:600}}>${s.label}</div>
+              <div style=${{fontSize:10,color:G.mu}}>${s.sub}</div>
+            </div>`)}
+          </div>
+          <div style=${{fontSize:11,fontWeight:700,color:G.mu,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Habit completion rates</div>
+          ${at===0&&html`<div style=${{color:G.mu,fontSize:13,textAlign:"center",padding:"20px 0"}}>Stats appear after your first day!</div>`}
+          ${hs.map(h=>html`
+            <div key=${h.id} style=${{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <span style=${{fontSize:14,width:20,textAlign:"center"}}>${h.icon}</span>
+              <div style=${{flex:1,minWidth:0}}>
+                <div style=${{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style=${{fontSize:11,color:G.tx,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>${h.label}</span>
+                  <span style=${{fontSize:11,fontWeight:700,color:h.rate>=80?G.dk:h.rate>=50?G.ad:G.rd,marginLeft:8,flexShrink:0}}>${h.rate}%</span>
+                </div>
+                <div style=${{background:G.br,borderRadius:3,height:5}}>
+                  <div style=${{width:`${h.rate}%`,height:"100%",borderRadius:3,background:h.rate>=80?G.md:h.rate>=50?G.am:G.rd}}/>
+                </div>
+              </div>
+            </div>
+          `)}
+        </div>`;
+      })()}
+
+    </div>
+  </div>`;
+}
+
+createRoot(document.getElementById("root")).render(html`<${App}/>`);
+</script>
+</body>
+</html>
